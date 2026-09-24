@@ -11,6 +11,7 @@ Replaces `--dangerously-skip-permissions` with intelligent model-based classifie
 """
 
 import re
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from .types import DecisionVerdict, DecisionTier, AutoModeEvaluation
 
@@ -56,11 +57,45 @@ class AutoModeGuardrail:
         (r"pkill\s+-9\s+bash", "Self-Destruction: Process kill targeting agent harness"),
     ]
 
+    SENSITIVE_PATHS = {
+        ".git/config",
+        ".git/credentials",
+        ".env",
+        ".env.local",
+        ".env.production",
+        ".bashrc",
+        ".zshrc",
+        ".ssh",
+        "id_rsa",
+        "id_ed25519",
+        "authorized_keys",
+        ".claude/permissions.json",
+    }
+
     def __init__(self, project_root: str = "/project"):
-        self.project_root = project_root
+        self.project_root = Path(project_root).expanduser().resolve()
         self.probe = PromptInjectionProbe()
         self.consecutive_denials = 0
         self.total_denials = 0
+
+    def _safe_project_path(self, path: str) -> Tuple[bool, str]:
+        """Return whether a path is contained by the project and not sensitive."""
+        if not path or not path.strip():
+            return False, "File path is empty."
+
+        try:
+            candidate = Path(path).expanduser()
+            resolved = (self.project_root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+            relative = resolved.relative_to(self.project_root)
+        except (OSError, RuntimeError, ValueError):
+            return False, f"Target '{path}' escapes project directory '{self.project_root}'."
+
+        relative_path = relative.as_posix()
+        for sensitive in self.SENSITIVE_PATHS:
+            if relative_path == sensitive or relative_path.startswith(f"{sensitive}/"):
+                return False, f"Target file '{relative_path}' is security-sensitive."
+
+        return True, relative_path
 
     def evaluate_action(self, user_prompt: str, tool_name: str, arguments: Dict[str, Any], tool_output: str = "") -> AutoModeEvaluation:
         # Step 0: Input-Layer Probe
@@ -78,14 +113,14 @@ class AutoModeGuardrail:
         # Step 2: Tier 2 In-Project File Boundary
         if tool_name in ("write_file", "edit_file"):
             path = arguments.get("path", "")
-            if not path.startswith("/") or path.startswith(self.project_root):
-                if not any(s in path for s in [".git/config", ".env", "id_rsa"]):
-                    self.consecutive_denials = 0
-                    return AutoModeEvaluation(
-                        tier=DecisionTier.TIER_2_PROJECT_BOUNDARY,
-                        verdict=DecisionVerdict.ALLOW,
-                        reason=f"Cleared Tier 2: File edit on '{path}' is git-reviewable inside project root (0ms latency)."
-                    )
+            safe_path, path_reason = self._safe_project_path(path)
+            if safe_path:
+                self.consecutive_denials = 0
+                return AutoModeEvaluation(
+                    tier=DecisionTier.TIER_2_PROJECT_BOUNDARY,
+                    verdict=DecisionVerdict.ALLOW,
+                    reason=f"Cleared Tier 2: File edit on '{path}' is git-reviewable inside project root (0ms latency)."
+                )
 
         # Step 3: Tier 3 Transcript Classifier (Reasoning-Blind)
         command = arguments.get("command", "") or str(arguments)

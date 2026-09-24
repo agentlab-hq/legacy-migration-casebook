@@ -1,16 +1,13 @@
 """Parallel Agent Team & Compiler Benchmark Harness (Feb 05, 2026).
 
-Implements Nicholas Carlini's parallel autonomous multi-agent harness:
-1. Infinite task loop with git-based task locking in `current_tasks/`.
-2. GCC Oracle Differential Testing: bisecting compiler bugs by file substitution.
-3. Harness mitigations for LLM limitations:
-   - Context window pollution: short summaries with 'ERROR:' prefix logs for grep.
-   - Time blindness: deterministic 1% or 10% subsampled regression testing.
-4. Multi-agent role specialization (Codegen, Deduplication, Optimization, Rust Critic).
+Implements task locking, compiler-output reduction, reproducible test sampling,
+and GCC-oracle differential testing for the reference harness.
 """
 
-import time
+import hashlib
+import os
 import random
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass
 
@@ -25,27 +22,62 @@ class AgentTask:
 
 
 class GitTaskLockManager:
-    """Decentralized task locking using files in current_tasks/ without an orchestrator."""
+    """Cross-process task locking backed by atomically-created lock files.
 
-    def __init__(self):
-        self.locked_tasks: Dict[str, str] = {}  # task_filename -> agent_id
+    The default directory is ``current_tasks`` to match the documented harness
+    layout. A lock is acquired with ``O_CREAT | O_EXCL``, so two processes cannot
+    claim the same task successfully. The lock file contains the owning agent ID
+    for inspection and debugging.
+    """
+
+    def __init__(self, lock_dir: str = "current_tasks"):
+        self.lock_dir = Path(lock_dir)
+        self.locked_tasks: Dict[str, str] = {}
         self.completed_tasks: Set[str] = set()
 
+    def _lock_path(self, task_name: str) -> Path:
+        if not task_name or Path(task_name).name != task_name:
+            raise ValueError("task_name must be a non-empty file name without path separators")
+        return self.lock_dir / f"{task_name}.txt"
+
     def try_acquire_lock(self, agent_id: str, task_name: str) -> bool:
-        """Attempts to lock current_tasks/<task_name>.txt."""
-        lock_file = f"current_tasks/{task_name}.txt"
-        if lock_file in self.locked_tasks:
-            # Lock collision: Another agent took this task
+        """Atomically claim ``<lock_dir>/<task_name>.txt``."""
+        if not agent_id:
+            raise ValueError("agent_id must be non-empty")
+
+        lock_path = self._lock_path(task_name)
+        self.lock_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
             return False
-        self.locked_tasks[lock_file] = agent_id
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as lock_file:
+                lock_file.write(f"{agent_id}\n")
+        except Exception:
+            lock_path.unlink(missing_ok=True)
+            raise
+
+        self.locked_tasks[str(lock_path)] = agent_id
         return True
 
-    def release_lock(self, agent_id: str, task_name: str, completed: bool = True):
-        lock_file = f"current_tasks/{task_name}.txt"
-        if self.locked_tasks.get(lock_file) == agent_id:
-            del self.locked_tasks[lock_file]
-            if completed:
-                self.completed_tasks.add(task_name)
+    def release_lock(self, agent_id: str, task_name: str, completed: bool = True) -> bool:
+        """Release a lock only when its recorded owner matches ``agent_id``."""
+        lock_path = self._lock_path(task_name)
+        try:
+            owner = lock_path.read_text(encoding="utf-8").splitlines()[0].strip()
+        except (FileNotFoundError, IndexError):
+            return False
+
+        if owner != agent_id:
+            return False
+
+        lock_path.unlink()
+        self.locked_tasks.pop(str(lock_path), None)
+        if completed:
+            self.completed_tasks.add(task_name)
+        return True
 
 
 class ContextPollutionFilter:
@@ -53,64 +85,54 @@ class ContextPollutionFilter:
 
     @staticmethod
     def format_compiler_output(stdout: str, stderr: str) -> str:
-        """Formats logs so Claude's context window isn't drowned in thousands of lines."""
         lines = (stdout + "\n" + stderr).splitlines()
-        errors = [l for l in lines if "error" in l.lower() or "panic" in l.lower()]
-        
+        errors = [line for line in lines if "error" in line.lower() or "panic" in line.lower()]
         if not errors:
             return f"Build Succeeded ({len(lines)} lines suppressed). All checks clean."
-        
-        # Prepend explicit ERROR tags so agent grep can quickly find root causes
+
         summary_lines = [f"Build Failed with {len(errors)} errors. Truncated sample:"]
-        for err in errors[:5]:
-            summary_lines.append(f"ERROR: {err.strip()}")
+        for error in errors[:5]:
+            summary_lines.append(f"ERROR: {error.strip()}")
         if len(errors) > 5:
             summary_lines.append(f"... {len(errors) - 5} more errors logged to compiler_err.log")
         return "\n".join(summary_lines)
 
 
 class TimeBlindnessTestSampler:
-    """Runs fast deterministic random subsamples (1% or 10%) so agents don't stall for hours."""
+    """Runs fast, reproducible random subsamples so agents do not stall for hours."""
 
     def __init__(self, full_test_suite_size: int = 1200):
+        if full_test_suite_size < 0:
+            raise ValueError("full_test_suite_size must be non-negative")
         self.test_ids = [f"test_gcc_{i:04d}" for i in range(full_test_suite_size)]
 
     def get_agent_fast_sample(self, agent_id: str, sample_ratio: float = 0.1) -> List[str]:
-        # Deterministic per agent seed so regressions are reliably reproducible
-        seed = hash(agent_id) % 100000
-        rng = random.Random(seed)
-        sample_size = int(len(self.test_ids) * sample_ratio)
-        return rng.sample(self.test_ids, sample_size)
+        if not 0.0 <= sample_ratio <= 1.0:
+            raise ValueError("sample_ratio must be between 0.0 and 1.0")
+        digest = hashlib.sha256(agent_id.encode("utf-8")).digest()
+        seed = int.from_bytes(digest[:8], byteorder="big", signed=False)
+        return random.Random(seed).sample(self.test_ids, int(len(self.test_ids) * sample_ratio))
 
 
 class GCCOracleDifferentialTester:
-    """Uses GCC as a known-good online compiler oracle to isolate bugs in the Linux kernel."""
+    """Uses GCC as a known-good online compiler oracle to isolate bugs."""
 
     def __init__(self, kernel_modules: Optional[List[str]] = None):
         self.modules = kernel_modules or [
-            "kernel/sched/core.c",
-            "mm/memory.c",
-            "fs/ext4/super.c",
-            "net/ipv4/tcp.c",
-            "drivers/char/tty_io.c",
-            "arch/x86/kernel/entry_64.c"
+            "kernel/sched/core.c", "mm/memory.c", "fs/ext4/super.c",
+            "net/ipv4/tcp.c", "drivers/char/tty_io.c", "arch/x86/kernel/entry_64.c"
         ]
-        # In a real run, Claude's compiler may have bugs in specific modules
         self.buggy_modules = {"mm/memory.c"}
 
     def run_differential_build(self, claude_compiled_modules: Set[str]) -> Tuple[bool, Optional[str]]:
-        """Simulates compiling the kernel where some files are built by Claude and rest by GCC."""
-        # If any buggy module was built by Claude, the kernel boot fails!
-        failed = [m for m in claude_compiled_modules if m in self.buggy_modules]
+        failed = [module for module in claude_compiled_modules if module in self.buggy_modules]
         if failed:
             return False, f"Boot Failed: Regression caused by modules compiled by Claude: {failed}"
         return True, "Boot Succeeded: Kernel booted to userspace successfully."
 
     def bisect_failing_module(self) -> str:
-        """Delta-debugging algorithm: bisects kernel modules to identify which one fails."""
-        for m in self.modules:
-            # Build only this module with Claude, rest with GCC
-            passed, _ = self.run_differential_build({m})
+        for module in self.modules:
+            passed, _ = self.run_differential_build({module})
             if not passed:
-                return m
+                return module
         return "None"
