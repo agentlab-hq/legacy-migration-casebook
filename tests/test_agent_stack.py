@@ -46,12 +46,19 @@ class TestAnthropicAgentStack(unittest.TestCase):
         self.assertIn("[EMAIL_1]", masked)
         self.assertEqual(vault.detokenize(masked), raw)
 
-    def test_git_task_locking(self):
-        locker = GitTaskLockManager()
-        self.assertTrue(locker.try_acquire_lock("Agent-A", "parse_expr"))
-        self.assertFalse(locker.try_acquire_lock("Agent-B", "parse_expr"))
-        locker.release_lock("Agent-A", "parse_expr")
-        self.assertTrue(locker.try_acquire_lock("Agent-B", "parse_expr"))
+    def test_git_task_locking_uses_temporary_directory_and_cleans_up(self):
+        with tempfile.TemporaryDirectory() as lock_dir:
+            first = GitTaskLockManager(lock_dir)
+            second = GitTaskLockManager(lock_dir)
+
+            self.assertTrue(first.try_acquire_lock("Agent-A", "parse_expr"))
+            self.assertFalse(second.try_acquire_lock("Agent-B", "parse_expr"))
+            self.assertFalse(second.release_lock("Agent-B", "parse_expr"))
+            self.assertTrue(first.release_lock("Agent-A", "parse_expr"))
+
+            self.assertTrue(second.try_acquire_lock("Agent-B", "parse_expr"))
+            self.assertTrue(second.release_lock("Agent-B", "parse_expr"))
+            self.assertFalse((Path(lock_dir) / "parse_expr.txt").exists())
 
     def test_gcc_oracle_bisection(self):
         self.assertEqual(GCCOracleDifferentialTester().bisect_failing_module(), "mm/memory.c")
