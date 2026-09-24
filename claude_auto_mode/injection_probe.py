@@ -46,9 +46,12 @@ class PromptInjectionProbe:
             for cp in custom_patterns:
                 self.patterns.append(re.compile(cp, re.IGNORECASE))
 
-    def scan_tool_result(self, tool_name: str, raw_content: str) -> Tuple[bool, str, List[str]]:
+    def scan_tool_result(self, tool_name: str, raw_content: str, user_directive: str = "") -> Tuple[bool, str, List[str]]:
         """Scans tool output for injection signatures.
-        
+
+        When flagged and a user directive is supplied, the anchoring banner
+        names the directive so the model can re-anchor on it.
+
         Returns:
             Tuple of (is_flagged, annotated_content, matched_patterns)
         """
@@ -59,14 +62,17 @@ class PromptInjectionProbe:
                 matches.append(m.group(0))
 
         if matches:
-            annotated_content = f"{self.WARNING_BANNER}\n\n{raw_content}"
+            banner = self.WARNING_BANNER
+            if user_directive:
+                banner += f"\n[ANCHOR] User's original directive: {user_directive!r}"
+            annotated_content = f"{banner}\n\n{raw_content}"
             return True, annotated_content, matches
-        
+
         return False, raw_content, []
 
-    def screen(self, tool_result: ToolResult, tool_name: str = "tool") -> ToolResult:
+    def screen(self, tool_result: ToolResult, tool_name: str = "tool", user_directive: str = "") -> ToolResult:
         """Screens a ToolResult object in place or returns enriched copy."""
-        flagged, annotated_text, matches = self.scan_tool_result(tool_name, tool_result.content)
+        flagged, annotated_text, matches = self.scan_tool_result(tool_name, tool_result.content, user_directive)
         tool_result.flagged_injection = flagged
         if flagged:
             tool_result.injection_warning = self.WARNING_BANNER

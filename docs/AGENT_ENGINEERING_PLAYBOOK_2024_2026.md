@@ -60,11 +60,11 @@ Rather than leaving this as abstract discussion, we have built a **complete, run
    - `workflows.py`: Prompt Chaining with programmatic gates, Routing, Parallel Sectioning/Voting, Orchestrator-Workers, Evaluator-Optimizer.
    - `mcp_code_mode.py`: Virtual MCP filesystem projection, progressive disclosure, PII tokenization vault, in-sandbox data filtering.
    - `parallel_team_harness.py`: Git-based task locking (`current_tasks/`), context pollution mitigation, time-blindness test subsampling, GCC oracle differential tester.
-   - `auto_mode_guard.py`: Input prompt-injection probe, Tier 1/2 allowlists, reasoning-blind transcript classifier, deny-and-continue state machine.
+   - `auto_mode_guard.py`: Integrated Auto Mode guardrail — a thin adapter over the `claude_auto_mode` policy layer (single implementation of the probe → Tier 1 → Tier 2 → Tier 3 contract, with deny-and-continue state machine).
    - `session_and_harness.py`: Tripartite decoupling of Brain, Hands, and Durable Session with cattle failover.
    - `run_integrated_system.py`: Master end-to-end simulation executing all 5 subsystems (asserted; exits non-zero on failure).
-   - `tests/`: `test_agent_stack.py` + `test_claude_auto_mode.py` — 55 unit tests covering the integrated stack and the standalone policy layer.
-   - A standalone policy layer lives in `claude_auto_mode/` (probe, Tier 1/2 gates, policy engine, and the `AutoModePipeline` orchestrator); `anthropic_agent_stack.auto_mode_guard` is the integrated form of the same three-tier contract.
+   - `tests/`: `test_agent_stack.py` + `test_claude_auto_mode.py` — 60 unit tests covering the integrated stack and the policy layer.
+   - The canonical policy layer lives in `claude_auto_mode/` (probe, Tier 1/2 gates, policy engine, and the `AutoModePipeline` orchestrator); the shared safety enums are defined there and re-exported by `anthropic_agent_stack.types`.
 
 ---
 

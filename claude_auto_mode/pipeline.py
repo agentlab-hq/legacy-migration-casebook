@@ -1,15 +1,22 @@
-"""End-to-end Auto Mode pipeline for the standalone policy layer.
+"""End-to-end Auto Mode pipeline — the canonical three-tier policy layer.
 
-Orchestrates the modules in this package as one decision pipeline:
+This is the single implementation of the Auto Mode defense-in-depth contract
+used across the project. The integrated demo stack
+(``anthropic_agent_stack.auto_mode_guard``) is a thin adapter over this
+pipeline, so probe patterns, tier lists, sensitive paths, and block rules
+exist in exactly one place.
 
-    Input-layer injection probe -> Tier 1 (safe-tool allowlist)
-        -> Tier 2 (in-project file boundary) -> Tier 3 (policy engine)
+Decision flow:
 
-This mirrors the integrated guardrail in ``anthropic_agent_stack.auto_mode_guard``
-so the two packages implement the same defense-in-depth contract: file edits
-that fail the Tier 2 boundary are BLOCKED at that boundary (never silently
-fall through to the command-rule classifier), and every block feeds the
-Deny-and-Continue retry budgets.
+    Input-layer injection probe (demotes flagged tool output to passive data,
+    anchored to the user directive)
+        -> Tier 1 (safe-tool allowlist, blanket shell escapes stripped)
+        -> Tier 2 (in-project file boundary; violations BLOCK here and never
+           fall through to the command-rule classifier)
+        -> Tier 3 (policy engine: 21 block rules with 3 allow exceptions)
+
+Every block feeds the Deny-and-Continue retry budgets (3 consecutive /
+20 total denials escalate to a human).
 """
 
 from typing import List, Optional
@@ -46,59 +53,69 @@ class AutoModePipeline:
         self.consecutive_denials = 0
         self.total_denials = 0
 
-    def screen_tool_result(self, tool_result: ToolResult, tool_name: str = "tool") -> ToolResult:
+    def screen_tool_result(self, tool_result: ToolResult, tool_name: str = "tool", user_directive: str = "") -> ToolResult:
         """Input-layer defense: scan tool output before it reaches the model."""
-        return self.probe.screen(tool_result, tool_name)
+        return self.probe.screen(tool_result, tool_name, user_directive)
 
-    def evaluate(self, tool_call: ToolCall) -> AutoModeDecision:
+    def evaluate(self, tool_call: ToolCall, user_prompt: str = "", tool_output: str = "") -> AutoModeDecision:
+        """Evaluate one tool call.
+
+        ``user_prompt`` is the authorization context shown to the (simulated)
+        reasoning-blind classifier; ``tool_output`` is scanned by the
+        input-layer probe first — a flagged output is treated as passive data
+        and noted on the decision rather than changing the action verdict.
+        """
         name = tool_call.tool_name.lower().strip()
+
+        # Input-layer probe.
+        probe_flagged = False
+        if tool_output:
+            probe_flagged = self.probe.scan_tool_result(name, tool_output, user_prompt)[0]
 
         # Tier 1: safe read-only tools clear immediately.
         allowed, reason = self.tier1.evaluate(tool_call)
         if allowed:
-            self.consecutive_denials = 0
-            return AutoModeDecision(
-                tier=DecisionTier.TIER_1_SAFE_ALLOWLIST,
-                verdict=DecisionVerdict.ALLOW,
-                reason=reason,
-            )
-
-        # Tier 2: in-project file operations. File-edit tools that fail the
-        # boundary (escape, sensitive file, or missing path) are BLOCKED here:
-        # falling through to command rules would silently allow them.
-        allowed, reason = self.tier2.evaluate(tool_call)
-        if allowed:
-            self.consecutive_denials = 0
-            return AutoModeDecision(
-                tier=DecisionTier.TIER_2_PROJECT_BOUNDARY,
-                verdict=DecisionVerdict.ALLOW,
-                reason=reason,
-            )
-        if name in self.tier2.FILE_EDIT_TOOLS:
-            return self._block(
-                DecisionTier.TIER_2_PROJECT_BOUNDARY,
-                reason or "File operation failed Tier 2 boundary checks (missing or unsafe path).",
-            )
-
-        # Tier 3: policy engine (block rules with allow exceptions).
-        blocks, exception = self.policy.check_command(self._executable_command(tool_call))
-        if not blocks:
-            self.consecutive_denials = 0
-            if exception:
-                return AutoModeDecision(
-                    tier=DecisionTier.TIER_3_STAGE_1,
-                    verdict=DecisionVerdict.ALLOW,
-                    reason=f"Cleared Tier 3: Matched allow exception {exception.id} ({exception.name}).",
+            decision = self._allow(DecisionTier.TIER_1_SAFE_ALLOWLIST, reason)
+        else:
+            # Tier 2: in-project file operations. File-edit tools that fail
+            # the boundary (escape, sensitive file, missing path) are BLOCKED
+            # here: falling through to command rules would silently allow them.
+            allowed, reason = self.tier2.evaluate(tool_call)
+            if allowed:
+                decision = self._allow(DecisionTier.TIER_2_PROJECT_BOUNDARY, reason)
+            elif name in self.tier2.FILE_EDIT_TOOLS:
+                decision = self._block(
+                    DecisionTier.TIER_2_PROJECT_BOUNDARY,
+                    reason or "File operation failed Tier 2 boundary checks (missing or unsafe path).",
+                    user_prompt,
                 )
-            return AutoModeDecision(
-                tier=DecisionTier.TIER_3_STAGE_1,
-                verdict=DecisionVerdict.ALLOW,
-                reason="Cleared Tier 3: No block rule matched the executable payload.",
+            else:
+                # Tier 3: policy engine (block rules with allow exceptions).
+                blocks, exception = self.policy.check_command(self._executable_command(tool_call))
+                if not blocks:
+                    if exception:
+                        decision = self._allow(
+                            DecisionTier.TIER_3_STAGE_1,
+                            f"Cleared Tier 3: Matched allow exception {exception.id} ({exception.name}).",
+                        )
+                    else:
+                        decision = self._allow(
+                            DecisionTier.TIER_3_STAGE_1,
+                            "Cleared Tier 3: No block rule matched the executable payload.",
+                        )
+                else:
+                    decision = self._block(
+                        DecisionTier.TIER_3_STAGE_2,
+                        "; ".join(f"{b.id} {b.name}: {b.description}" for b in blocks),
+                        user_prompt,
+                    )
+
+        if probe_flagged:
+            decision.reason += (
+                " Input-layer probe flagged the tool output; anchored to the user "
+                "directive and treated as passive data."
             )
-        return self._block(
-            DecisionTier.TIER_3_STAGE_2,
-            "; ".join(f"{b.id} {b.name}: {b.description}" for b in blocks),
-        )
+        return decision
 
     def _executable_command(self, tool_call: ToolCall) -> str:
         """Bare executable payload (reasoning-blind view input)."""
@@ -107,9 +124,15 @@ class AutoModePipeline:
         args = tool_call.arguments or {}
         return str(args.get("command", ""))
 
-    def _block(self, tier: DecisionTier, reason: str) -> AutoModeDecision:
+    def _allow(self, tier: DecisionTier, reason: str) -> AutoModeDecision:
+        self.consecutive_denials = 0
+        return AutoModeDecision(tier=tier, verdict=DecisionVerdict.ALLOW, reason=reason)
+
+    def _block(self, tier: DecisionTier, reason: str, user_prompt: str = "") -> AutoModeDecision:
         self.consecutive_denials += 1
         self.total_denials += 1
+        if user_prompt:
+            reason = f"[user directive: {user_prompt!r}] " + reason
         return AutoModeDecision(
             tier=tier,
             verdict=DecisionVerdict.BLOCK,
