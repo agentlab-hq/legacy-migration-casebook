@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "legacy-migration-casebook"
+version = "0.1.0"
+description = "Reference implementations for safer AI-assisted legacy code migrations"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "AgentLab HQ" }
+]
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["anthropic_agent_stack*", "claude_auto_mode*", "commercial_engine*"]
+
+[tool.unittest]
+# Tests are run with: python -m unittest discover -s tests -p "test_*.py" -v
