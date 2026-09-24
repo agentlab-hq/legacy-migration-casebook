@@ -7,7 +7,7 @@ project boundary, Tier 3 policy engine, Deny-and-Continue budgets), so the
 three-tier contract has exactly one implementation: probe patterns, tier
 lists, sensitive paths, and block rules are all defined in ``claude_auto_mode``.
 
-Public API (unchanged):
+Public API (unchanged)::
 
     AutoModeGuardrail(project_root=...).evaluate_action(
         user_prompt, tool_name, arguments, tool_output
@@ -16,13 +16,13 @@ Public API (unchanged):
 
 import uuid
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Mapping, Optional
 
 from claude_auto_mode.injection_probe import PromptInjectionProbe  # re-exported for compatibility
 from claude_auto_mode.pipeline import AutoModePipeline
 from claude_auto_mode.types import ToolCall
 
-from .types import AutoModeEvaluation, DecisionTier, DecisionVerdict
+from .types import AutoModeEvaluation, DecisionTier
 
 
 class AutoModeGuardrail:
@@ -31,9 +31,10 @@ class AutoModeGuardrail:
     def __init__(self, project_root: str = "/project"):
         self.project_root = Path(project_root).expanduser().resolve()
         self.pipeline = AutoModePipeline(project_root=str(self.project_root))
-        self.probe = PromptInjectionProbe()
+        # Preserve the compatibility attribute while sharing the canonical
+        # probe instance used by the pipeline.
+        self.probe = self.pipeline.probe
 
-    # Backward-compatible budget views; authoritative state lives in the pipeline.
     @property
     def consecutive_denials(self) -> int:
         return self.pipeline.consecutive_denials
@@ -42,37 +43,47 @@ class AutoModeGuardrail:
     def total_denials(self) -> int:
         return self.pipeline.total_denials
 
-    def reset_budget(self):
+    def reset_budget(self) -> None:
         self.pipeline.reset_budget()
 
     def evaluate_action(
         self,
         user_prompt: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: Optional[Mapping[str, Any]],
         tool_output: str = "",
     ) -> AutoModeEvaluation:
-        args = dict(arguments or {})
+        """Evaluate a tool action and adapt the canonical decision DTO."""
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            raise ValueError("tool_name must be a non-empty string")
+        if arguments is not None and not isinstance(arguments, Mapping):
+            raise TypeError("arguments must be a mapping or None")
+
+        args: Dict[str, Any] = dict(arguments or {})
+        command = args.get("command", "")
         tool_call = ToolCall(
             id=f"call-{uuid.uuid4().hex[:8]}",
             tool_name=tool_name,
             arguments=args,
-            executable_command=str(args.get("command", "")),
+            executable_command="" if command is None else str(command),
         )
-        decision = self.pipeline.evaluate(tool_call, user_prompt=user_prompt, tool_output=tool_output)
+        decision = self.pipeline.evaluate(
+            tool_call,
+            user_prompt=user_prompt or "",
+            tool_output=tool_output or "",
+        )
 
         tier = decision.tier
+        is_stage1 = tier == DecisionTier.TIER_3_STAGE_1
+        is_stage2 = tier == DecisionTier.TIER_3_STAGE_2
         return AutoModeEvaluation(
             tier=tier,
             verdict=decision.verdict,
-            stage1_verdict=(
-                DecisionVerdict.BLOCK
-                if tier == DecisionTier.TIER_3_STAGE_2
-                else DecisionVerdict.ALLOW if tier == DecisionTier.TIER_3_STAGE_1
-                else None
-            ),
-            stage2_reasoning=decision.reason if tier == DecisionTier.TIER_3_STAGE_2 else None,
-            prompt_cache_hit=tier == DecisionTier.TIER_3_STAGE_2,
+            stage1_verdict=decision.verdict if is_stage1 else None,
+            stage2_reasoning=decision.reason if is_stage2 else None,
+            # No classifier cache metric is produced by the deterministic
+            # policy engine, so do not infer a cache hit from the tier.
+            prompt_cache_hit=False,
             consecutive_denials=decision.consecutive_denials,
             total_denials=decision.total_denials,
             escalated_to_human=decision.escalated_to_human,
