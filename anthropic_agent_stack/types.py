@@ -1,8 +1,8 @@
 """Common types and data structures across the Anthropic Agent Engineering Stack."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Dict, Optional, Any, Callable
+from typing import Dict, Any, Optional
 
 
 class WorkflowPattern(str, Enum):

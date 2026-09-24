@@ -5,7 +5,7 @@
 
 ## Executive Summary: Is This "Just Boring Writing"?
 
-**No.** The four technical reports you provided are not disconnected corporate prose. When read chronologically, they form the **definitive engineering narrative of modern autonomous software agents**. 
+**No.** The five milestone reports are not disconnected corporate prose. When read chronologically, they form the **definitive engineering narrative of modern autonomous software agents**.
 
 Each publication marks a critical production breakthrough where Anthropic encountered a fundamental scaling ceiling, identified why the previous paradigm collapsed, and engineered an architectural countermeasure:
 
@@ -23,11 +23,11 @@ Each publication marks a critical production breakthrough where Anthropic encoun
 │ 2. Nov 04, 2025    │ MCP "Code Mode"                      │ Context Bloat: Direct tool calling  │
 │    "Code Execution │ Tools projected as filesystem APIs;  │ consumed 100k+ tokens for schemas;  │
 │    with MCP"       │ in-sandbox data filtering & PII vault│ 50k-token outputs flowed through LLM│
-│                    │ (98.7% token cost reduction).        │ twice (150k -> 2k tokens).          │
+│                    │ (98.8% token cost reduction).        │ twice (105k -> 1.3k tokens).        │
 ├────────────────────┼──────────────────────────────────────┼─────────────────────────────────────┤
 │ 3. Feb 05, 2026    │ Parallel Autonomous Agent Teams      │ Single-session speed limit: 16 Opus │
-│    "Building a C   │ Git task locking in current_tasks/,  │ agents wrote a 100k-line C compiler;│
-│    Compiler"       │ GCC oracle differential testing,     │ BUT relied on dangerous             │
+│    "Building a C   │ Git task locking in current_tasks/,  │ agents wrote a 100k-line C compiler │
+│    Compiler"       │ GCC oracle differential testing,     │ (written in Rust); BUT relied on    │
 │    (N. Carlini)    │ context & time blindness mitigations.│ --dangerously-skip-permissions.     │
 ├────────────────────┼──────────────────────────────────────┼─────────────────────────────────────┤
 │ 4. Mar 25, 2026    │ Claude Code Auto Mode                │ The Permission Dilemma: Replaced    │
@@ -52,18 +52,19 @@ Rather than leaving this as abstract discussion, we have built a **complete, run
    - Running live on **`http://0.0.0.0:8000`** in the browser preview.
    - Interactive failover chaos simulator (killing sandboxes, crashing harnesses, inspecting security vaults).
    - Auto Mode live classifier simulator testing the real Anthropic incident log cases.
-   - MCP Code Mode token economy benchmark (98.7% token savings visualizer).
+   - MCP Code Mode token economy benchmark (98.8% token savings visualizer).
    - Parallel agent task-lock board & GCC Oracle differential bug bisector.
    - Foundational workflow simulator and Poka-Yoke ACI design comparison.
 
-2. **The Production Python Reference Framework (`/home/user/anthropic_agent_stack/`)**:
+2. **The Production Python Reference Framework (`anthropic_agent_stack/` at the repo root)**:
    - `workflows.py`: Prompt Chaining with programmatic gates, Routing, Parallel Sectioning/Voting, Orchestrator-Workers, Evaluator-Optimizer.
    - `mcp_code_mode.py`: Virtual MCP filesystem projection, progressive disclosure, PII tokenization vault, in-sandbox data filtering.
    - `parallel_team_harness.py`: Git-based task locking (`current_tasks/`), context pollution mitigation, time-blindness test subsampling, GCC oracle differential tester.
    - `auto_mode_guard.py`: Input prompt-injection probe, Tier 1/2 allowlists, reasoning-blind transcript classifier, deny-and-continue state machine.
    - `session_and_harness.py`: Tripartite decoupling of Brain, Hands, and Durable Session with cattle failover.
-   - `run_integrated_system.py`: Master end-to-end simulation executing all 5 subsystems.
-   - `tests/test_agent_stack.py`: 9 unit tests verifying 100% test pass rate.
+   - `run_integrated_system.py`: Master end-to-end simulation executing all 5 subsystems (asserted; exits non-zero on failure).
+   - `tests/`: `test_agent_stack.py` + `test_claude_auto_mode.py` — 55 unit tests covering the integrated stack and the standalone policy layer.
+   - A standalone policy layer lives in `claude_auto_mode/` (probe, Tier 1/2 gates, policy engine, and the `AutoModePipeline` orchestrator); `anthropic_agent_stack.auto_mode_guard` is the integrated form of the same three-tier contract.
 
 ---
 
@@ -96,7 +97,7 @@ Rather than leaving this as abstract discussion, we have built a **complete, run
 ---
 
 ### Milestone 3: Parallel Autonomous Agent Teams (Feb 2026)
-* **The Benchmark**: Nicholas Carlini ran 16 parallel Opus 4.6 agents in infinite loops across 2,000 sessions ($20,000 API cost) to write a 100,000-line Rust C compiler capable of building Linux 6.9, Doom, and SQLite.
+* **The Benchmark**: Nicholas Carlini ran 16 parallel Opus 4.6 agents in infinite loops across 2,000 sessions ($20,000 API cost) to write a 100,000-line C compiler (written in Rust) capable of building Linux 6.9, Doom, and SQLite.
 * **Harness Innovations**:
   - *Decentralized Git Locking*: Agents lock tasks by pushing files to `current_tasks/<task_name>.txt`. Git merge conflicts naturally reject duplicate claims without a centralized orchestrator.
   - *Context Window Pollution Defense*: Truncating stdout/stderr to short summaries, routing full logs to disk with `ERROR:` prefixes for regex grep.
@@ -138,11 +139,17 @@ Rather than leaving this as abstract discussion, we have built a **complete, run
 ## 3. How to Run and Test the Code
 
 ### Running the Live Web Application
-The web app is already running in the background workspace on port 8000. You can interact with it via the live browser preview:
+Serve the dashboard from the repo root:
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open <http://localhost:8000/> and:
 - Test container failovers in the **Managed Agents** tab.
-- Replay real Anthropic incident logs in the **Auto Mode** tab.
+- Evaluate incident commands (typed or preset) in the **Auto Mode** tab.
 - Calculate token savings in the **MCP Code Mode** tab.
-- Simulate 16 parallel agents and GCC bisection in the **Parallel Teams** tab.
+- Simulate parallel agents and GCC bisection in the **Parallel Teams** tab.
 
 ### Running the Python Stack from Terminal
 ```bash
@@ -157,7 +164,7 @@ python3 -m unittest discover -s tests -p "test_*.py"
 
 ## 4. Key Takeaway
 
-The progression across these 4 papers demonstrates that **building production agents is not about prompting an LLM in a loop**; it is an **operating systems and distributed systems problem**:
+The progression across these 5 reports demonstrates that **building production agents is not about prompting an LLM in a loop**; it is an **operating systems and distributed systems problem**:
 - Decouple execution from state (Pets vs. Cattle).
 - Decouple tool definition from context (MCP Code Mode).
 - Gate execution through reasoning-blind classifiers (Auto Mode).

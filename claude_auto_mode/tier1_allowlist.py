@@ -4,8 +4,8 @@ Implements state-read-only tool filtering and actively strips blanket shell /
 interpreter escapes configured from manual mode.
 """
 
-from typing import Set, List, Dict, Tuple, Optional
-from .types import ToolCall, DecisionVerdict
+from typing import Set, List, Tuple, Optional
+from .types import ToolCall
 
 
 class Tier1Allowlist:
