@@ -24,13 +24,7 @@ class TestOracle:
 
     @staticmethod
     def run_unit_tests(code: str) -> Tuple[bool, str]:
-        """Compile and execute the known migration interfaces in an isolated namespace.
-
-        This is deliberately a small smoke-test oracle, not a replacement for the
-        client's complete regression suite. It verifies that generated code is valid
-        Python, exposes the expected callable interfaces, and preserves the sample
-        behavior of the built-in migration fixtures.
-        """
+        """Compile and execute known migration interfaces in an isolated namespace."""
         try:
             tree = ast.parse(code, filename="migrated_module.py")
             compiled = compile(tree, filename="migrated_module.py", mode="exec")
@@ -87,12 +81,12 @@ class AutonomousMigrationWorker:
 
         migrated = re.sub(
             r"def calculate_risk\(amount, score\):",
-            "def calculate_risk(amount: float, score: float) -> float:\n    """Calculates normalized risk index [Modernized v2.0]."""",
+            'def calculate_risk(amount: float, score: float) -> float:\n    """Calculates normalized risk index [Modernized v2.0]."""',
             legacy
         )
         migrated = re.sub(
             r"def process_transaction\(tx_id, payload\):",
-            "def process_transaction(tx_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:\n    """Processes financial transaction [Strictly Typed]."""",
+            'def process_transaction(tx_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:\n    """Processes financial transaction [Strictly Typed]."""',
             migrated
         )
         if "from typing import Dict, Any" not in migrated:
@@ -100,7 +94,6 @@ class AutonomousMigrationWorker:
 
         module.migrated_code = migrated
         module.status = "MIGRATED"
-
         passed, _test_log = self.oracle.run_unit_tests(migrated)
         module.status = "VERIFIED_BY_ORACLE" if passed else "REGRESSION_DETECTED"
         return module
@@ -124,9 +117,8 @@ class CommercialMigrationEngine:
 
     def execute_migration(self) -> Dict[str, Any]:
         results = []
-        for path, mod in self.modules.items():
-            worker = AutonomousMigrationWorker("Worker-01", self.oracle)
-            updated = worker.migrate_file(mod)
+        for mod in self.modules.values():
+            updated = AutonomousMigrationWorker("Worker-01", self.oracle).migrate_file(mod)
             results.append({
                 "file": updated.path,
                 "status": updated.status,
@@ -144,8 +136,7 @@ class CommercialMigrationEngine:
 
 
 if __name__ == "__main__":
-    engine = CommercialMigrationEngine()
-    summary = engine.execute_migration()
+    summary = CommercialMigrationEngine().execute_migration()
     print("MIGRATION FLEET RUN COMPLETE:")
     print(f"Files Verified by Oracle: {summary['verified_count']}/{summary['total_files']}")
     for detail in summary["details"]:
