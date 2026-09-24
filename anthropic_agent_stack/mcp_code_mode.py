@@ -7,9 +7,8 @@ Solves the token-bloat and intermediate-result bottleneck of direct tool calls:
 4. Evolutionary Skills repository persistence
 """
 
-import json
 import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Any
 
 
 class VirtualMCPServer:
@@ -81,10 +80,13 @@ class PIITokenizer:
         return masked
 
     def detokenize(self, text: str) -> str:
-        detok = text
-        for token, original in self.vault.items():
-            detok = detok.replace(token, original)
-        return detok
+        # Replace only whole bracketed tokens so one original value can never
+        # clobber another (naive sequential str.replace cascades on overlap).
+        def _resolve(match):
+            token = match.group(0)
+            return self.vault.get(token, token)
+
+        return re.sub(r"\[(?:EMAIL|PHONE)_\d+\]", _resolve, text)
 
 
 class MCPCodeModeEngine:
@@ -138,7 +140,12 @@ class MCPCodeModeEngine:
         })
 
     def compare_token_costs(self, workflow_name: str) -> Dict[str, Any]:
-        """Calculates token overhead of Direct Tool Calling vs. Code Mode."""
+        """Calculates token overhead of Direct Tool Calling vs. Code Mode.
+
+        Known scenarios: ``transcript_to_crm``, ``sheet_filter_10k_rows``,
+        ``slack_poll``. Unknown names raise ``ValueError`` so callers fail
+        loudly instead of indexing an empty dict.
+        """
         if workflow_name == "transcript_to_crm":
             # Scenario: GDrive 45k token transcript piped to Salesforce lead
             direct_schema_tokens = 15000  # loading 50 MCP tool schemas upfront
@@ -176,7 +183,18 @@ class MCPCodeModeEngine:
                 "code_mode_tokens": code_mode_total,
                 "token_savings_pct": savings_pct
             }
-        return {}
+        elif workflow_name == "slack_poll":
+            # Scenario: agent waits for a deployment event in a Slack channel
+            direct_total = 42000
+            code_mode_total = 880
+            savings_pct = round(((direct_total - code_mode_total) / direct_total) * 100, 1)
+            return {
+                "scenario": "Slack Channel Polling for Deployment Event",
+                "direct_tool_tokens": direct_total,
+                "code_mode_tokens": code_mode_total,
+                "token_savings_pct": savings_pct
+            }
+        raise ValueError(f"Unknown workflow scenario: {workflow_name!r}")
 
     def register_skill(self, skill_name: str, code: str, doc: str):
         """Saves a reusable skill into ./skills/<skill_name>/ for evolutionary reuse."""

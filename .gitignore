@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Parallel-agent task lock files (demo harness)
+current_tasks/

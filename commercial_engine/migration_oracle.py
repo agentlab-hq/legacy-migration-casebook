@@ -76,23 +76,32 @@ class AutonomousMigrationWorker:
         self.oracle = oracle
 
     def migrate_file(self, module: CodeModule) -> CodeModule:
-        """Transforms the built-in legacy fixtures into typed Python code."""
+        """Transforms the built-in legacy fixtures into typed Python code.
+
+        If no transform matches the legacy source, the module is reported as
+        ``NO_TRANSFORM_APPLIED`` instead of being silently "verified"
+        unchanged.
+        """
         legacy = module.legacy_code
 
-        migrated = re.sub(
+        migrated, n1 = re.subn(
             r"def calculate_risk\(amount, score\):",
             'def calculate_risk(amount: float, score: float) -> float:\n    """Calculates normalized risk index [Modernized v2.0]."""',
             legacy
         )
-        migrated = re.sub(
+        migrated, n2 = re.subn(
             r"def process_transaction\(tx_id, payload\):",
             'def process_transaction(tx_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:\n    """Processes financial transaction [Strictly Typed]."""',
             migrated
         )
-        if "from typing import Dict, Any" not in migrated:
+        applied = n1 + n2
+        if applied and "from typing import Dict, Any" not in migrated:
             migrated = "from typing import Dict, Any, Optional\n\n" + migrated
 
         module.migrated_code = migrated
+        if applied == 0:
+            module.status = "NO_TRANSFORM_APPLIED"
+            return module
         module.status = "MIGRATED"
         passed, _test_log = self.oracle.run_unit_tests(migrated)
         module.status = "VERIFIED_BY_ORACLE" if passed else "REGRESSION_DETECTED"
@@ -127,10 +136,12 @@ class CommercialMigrationEngine:
             })
 
         verified_count = sum(1 for result in results if result["status"] == "VERIFIED_BY_ORACLE")
+        no_op_count = sum(1 for result in results if result["status"] == "NO_TRANSFORM_APPLIED")
         return {
             "total_files": len(results),
             "verified_count": verified_count,
-            "regressions": len(results) - verified_count,
+            "no_op_count": no_op_count,
+            "regressions": len(results) - verified_count - no_op_count,
             "details": results
         }
 

@@ -10,8 +10,6 @@ Implements the five core workflow patterns and autonomous agent loops:
 """
 
 from typing import List, Dict, Any, Callable, Optional, Tuple
-from dataclasses import dataclass, field
-import json
 
 
 class PromptChainingWorkflow:
@@ -85,7 +83,12 @@ class RoutingWorkflow:
 
 
 class ParallelizationWorkflow:
-    """Executes parallel tasks via Sectioning (independent subtasks) or Voting (consensus)."""
+    """Executes parallel tasks via Sectioning (independent subtasks) or Voting (consensus).
+
+    Note: the reference implementation runs subtasks sequentially so the
+    simulation stays deterministic and testable; a production deployment
+    would dispatch the same task list to concurrent workers.
+    """
 
     @staticmethod
     def section(input_data: Any, tasks: List[Dict[str, Any]], aggregator_fn: Callable[[List[Any]], Any]) -> Dict[str, Any]:

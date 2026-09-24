@@ -8,8 +8,8 @@ Implements the three customizable slots:
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Any
-from .types import BlockRuleCategory, DecisionVerdict
+from typing import List, Optional, Tuple
+from .types import BlockRuleCategory
 
 
 @dataclass
@@ -69,7 +69,8 @@ class PolicyConfig:
                       r"(?:aws\s+s3\s+rb|gcloud\s+storage\s+rm|az\s+storage\s+blob\s+delete-batch)"),
             BlockRule("DE-05", BlockRuleCategory.DESTROY_OR_EXFILTRATE, "External HTTP POST of Data",
                       "Prevent sending internal data or env vars to external endpoints",
-                      r"curl\s+.*?-X\s*POST.*?(?:-d|--data).*?https?://(?!localhost|127\.0\.0\.1)"),
+                      # Lookaheads make the match independent of flag order.
+                      r"curl\s+(?=.*?(?:-X\s*POST|--request\s+POST))(?=.*?(?:-d\b|--data(?:\s|=)))[^\n]*https?://(?!localhost|127\.0\.0\.1)"),
             BlockRule("DE-06", BlockRuleCategory.DESTROY_OR_EXFILTRATE, "Recursive Root/System Deletion",
                       "Prevent destructive rm -rf outside project directory",
                       r"rm\s+-(?:r[fF]|[fF]r)\s+(?:/|\~|/etc|/var|/usr|/home)"),
@@ -86,7 +87,9 @@ class PolicyConfig:
                       r"(?:crontab\s+-(?:e|r)|systemctl\s+enable)"),
             BlockRule("SP-04", BlockRuleCategory.DEGRADE_SECURITY_POSTURE, "Modify Agent Permissions Config",
                       "Prevent modifying agent permission settings or bypassing guardrails",
-                      r"(?:\.claude/permissions|claude\.json|\.agent_guard)"),
+                      # Read-only mentions (e.g. `grep claude.json README`) must NOT trip;
+                      # require a write/modify operator touching the config file.
+                      r"(?:sed\s+-i[^\n]*|(?:(?:echo|printf|tee|cp|mv|rm|chmod|chown)\s[^\n]*)|(?:>+\s?))\S*(?:\.claude/permissions\.json|claude\.json|\.agent_guard)|(?:\.claude/permissions\.json|claude\.json|\.agent_guard)\s*(?:>+\s|$)"),
             BlockRule("SP-05", BlockRuleCategory.DEGRADE_SECURITY_POSTURE, "Firewall / Security Group Weakening",
                       "Prevent opening firewall ports or disabling iptables/ufw",
                       r"(?:ufw\s+disable|iptables\s+-F)"),
@@ -94,7 +97,10 @@ class PolicyConfig:
             # Group 3: Cross Trust Boundaries
             BlockRule("TB-01", BlockRuleCategory.CROSS_TRUST_BOUNDARIES, "Credential Grepping / Exploration",
                       "Prevent scanning filesystem or env vars for unrelated API keys and tokens",
-                      r"(?:grep|find|cat)\s+.*?(?:API_KEY|AWS_SECRET|TOKEN|PASSWORD|PRIVATE_KEY|\.env)"),
+                      # Exploration only: recursive scans or env dumps. Targeted
+                      # project reads (e.g. `grep API_KEY src/config.py`) are
+                      # governed by the Tier 2 sensitive-path gate instead.
+                      r"(?:grep|find)\s+(?:[a-zA-Z-]*r[a-zA-Z]*\s+|--recursive\s+)[^\n]*(?:API_KEY|AWS_SECRET|TOKEN|PASSWORD|PRIVATE_KEY|\.env)|find\s+/(?:\s|$)(?=[^\n]*(?:API_KEY|AWS_SECRET|TOKEN|PASSWORD|PRIVATE_KEY|\.env))|\b(?:printenv|env)\b\s*(?:$|\|)"),
             BlockRule("TB-02", BlockRuleCategory.CROSS_TRUST_BOUNDARIES, "Execute Cloned External Repo Code",
                       "Prevent immediate arbitrary execution of code downloaded from external unvetted remotes",
                       r"(?:git\s+clone\s+https?://.*?&&.*?(?:python|node|bash|make))"),
@@ -103,7 +109,9 @@ class PolicyConfig:
                       r"curl\s+https?://[^\s]+\s*\|\s*(?:bash|sh|zsh)"),
             BlockRule("TB-04", BlockRuleCategory.CROSS_TRUST_BOUNDARIES, "Untrusted External Remotes",
                       "Prevent pushing or pulling from untrusted git remotes outside organization",
-                      r"git\s+remote\s+add\s+.*?(?!github\.com/my-org)"),
+                      # The lookahead must sit directly after the scheme so the
+                      # trusted-org URL is actually exempted.
+                      r"git\s+remote\s+add\s+\S+\s+https?://(?!github\.com/my-org/)"),
             BlockRule("TB-05", BlockRuleCategory.CROSS_TRUST_BOUNDARIES, "Access Non-Project AWS/GCP Accounts",
                       "Prevent assuming arbitrary cloud roles or switching to foreign profiles",
                       r"(?:aws\s+sts\s+assume-role|gcloud\s+config\s+set\s+account)"),

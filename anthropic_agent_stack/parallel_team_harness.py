@@ -131,8 +131,21 @@ class GCCOracleDifferentialTester:
         return True, "Boot Succeeded: Kernel booted to userspace successfully."
 
     def bisect_failing_module(self) -> str:
-        for module in self.modules:
-            passed, _ = self.run_differential_build({module})
+        """Binary-search the module list for the one that fails the differential build.
+
+        The failure predicate is monotone over sets (a build fails iff the set
+        contains a buggy module), so halving the candidate range converges in
+        O(log n) builds instead of scanning every module.
+        """
+        passed, _ = self.run_differential_build(set(self.modules))
+        if passed:
+            return "None"
+        lo, hi = 0, len(self.modules) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            passed, _ = self.run_differential_build(set(self.modules[lo : mid + 1]))
             if not passed:
-                return module
-        return "None"
+                hi = mid
+            else:
+                lo = mid + 1
+        return self.modules[lo]

@@ -6,7 +6,6 @@ Sensitive system files or paths escaping the project root are rejected at Tier 2
 and escalated to Tier 3.
 """
 
-import os
 from pathlib import Path
 from typing import Tuple, Optional, Set
 from .types import ToolCall

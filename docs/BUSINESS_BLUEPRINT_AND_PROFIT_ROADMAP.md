@@ -56,8 +56,7 @@ The session harness separates coordination state from disposable execution envir
 
 ## Next milestones
 
-1. Add a formal package configuration and continuous-integration workflow.
-2. Expand tests around policy edge cases and session replay.
-3. Replace simulation-only integrations with configurable adapters.
-4. Add structured JSON reports for migration runs and cost audits.
-5. Document deployment boundaries for local, containerized, and hosted execution.
+1. Expand tests around session replay (package configuration and CI already in place: `pyproject.toml` + `.github/workflows/ci.yml` covering the test suite, integrated demo, and both CLIs on Python 3.9–3.12).
+2. Replace simulation-only integrations with configurable adapters.
+3. Add structured JSON reports for migration runs and cost audits.
+4. Document deployment boundaries for local, containerized, and hosted execution.

@@ -10,7 +10,7 @@ Implements the tripartite decoupling:
 import time
 import uuid
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -102,14 +102,24 @@ class SecurityVault:
         self.mcp_oauth_tokens[service] = token
 
     def proxy_git_clone_url(self, repo_url: str) -> str:
-        """Injects authentication into remote without exposing token to agent."""
-        token = self.git_tokens.get(repo_url, "anonymous")
-        # In production this is handled by a credential-helper socket outside container
-        return f"https://x-access-token:[VAULT_ISOLATED]@{repo_url.replace('https://', '')}"
+        """Injects authentication into the remote URL without exposing the token to the agent.
+
+        Simulation: the vault records that a token exists for this repo, and a
+        placeholder credential reaches the sandbox. In production a
+        credential-helper socket outside the container injects the real token.
+        """
+        credential = (
+            "x-access-token:[VAULT_ISOLATED]" if repo_url in self.git_tokens else "anonymous"
+        )
+        return f"https://{credential}@{repo_url.replace('https://', '')}"
 
 
 class StatelessHarnessBrain:
     """The 'Brain': A stateless loop that directs Claude, easily rebooted on crash."""
+
+    # Defaults used for self-healing re-provisioning in the reference simulation.
+    DEFAULT_RESOURCES = {"cpu": 4, "mem": "8Gi"}
+    DEFAULT_REPO_URL = "https://github.com/my-org/repo"
 
     def __init__(self, session_id: str, session_log: DurableSessionLog, vault: SecurityVault):
         self.session_id = session_id
@@ -143,7 +153,7 @@ class StatelessHarnessBrain:
         """Executes a step with automatic cattle failover recovery."""
         if not self.current_sandbox or not self.current_sandbox.alive:
             # Self-healing cattle provisioning
-            self.provision_sandbox_on_demand({"cpu": 4, "mem": "8Gi"}, "https://github.com/my-org/repo")
+            self.provision_sandbox_on_demand(self.DEFAULT_RESOURCES, self.DEFAULT_REPO_URL)
 
         try:
             result = self.current_sandbox.execute(action_name, arguments)
@@ -158,7 +168,7 @@ class StatelessHarnessBrain:
             # Container died! Log tool error to session and re-provision
             self.session_log.emit_event("SANDBOX_CRASH", {"error": str(e)})
             # Re-provision fresh cattle sandbox immediately
-            self.provision_sandbox_on_demand({"cpu": 4, "mem": "8Gi"}, "https://github.com/my-org/repo")
+            self.provision_sandbox_on_demand(self.DEFAULT_RESOURCES, self.DEFAULT_REPO_URL)
             retry_result = self.current_sandbox.execute(action_name, arguments)
             self.session_log.emit_event("TOOL_RECOVERY_SUCCESS", {"result": retry_result})
             return f"[CATTLE FAILOVER RECOVERED] Container crashed and auto-reprovisioned. Output: {retry_result}"

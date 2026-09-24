@@ -1,8 +1,15 @@
-"""Common types and data structures across the Anthropic Agent Engineering Stack."""
+"""Common types and data structures across the Anthropic Agent Engineering Stack.
 
-from dataclasses import dataclass, field
+The safety enums (``DecisionVerdict`` / ``DecisionTier``) are defined once in
+``claude_auto_mode.types`` — the canonical policy layer — and re-exported here
+so the integrated stack and the standalone layer share a single definition.
+"""
+
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Dict, Optional, Any, Callable
+from typing import Dict, Any, Optional
+
+from claude_auto_mode.types import DecisionVerdict, DecisionTier  # noqa: F401  (canonical re-export)
 
 
 class WorkflowPattern(str, Enum):
@@ -13,19 +20,6 @@ class WorkflowPattern(str, Enum):
     ORCHESTRATOR_WORKERS = "Orchestrator-Workers"
     EVALUATOR_OPTIMIZER = "Evaluator-Optimizer"
     AUTONOMOUS_AGENT = "Autonomous Agent Loop"
-
-
-class DecisionVerdict(str, Enum):
-    ALLOW = "ALLOW"
-    BLOCK = "BLOCK"
-    WARN = "WARN"
-
-
-class DecisionTier(str, Enum):
-    TIER_1_SAFE_ALLOWLIST = "Tier 1: Safe-Tool Allowlist"
-    TIER_2_PROJECT_BOUNDARY = "Tier 2: In-Project File Operations"
-    TIER_3_STAGE_1 = "Tier 3: Fast Single-Token Classifier"
-    TIER_3_STAGE_2 = "Tier 3: Chain-of-Thought Classifier"
 
 
 @dataclass
