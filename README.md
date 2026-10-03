@@ -41,6 +41,19 @@ python3 -m http.server 8000
 
 Then visit <http://localhost:8000/>.
 
+## Use the policy CLI
+
+Install the project, then evaluate a proposed action as a machine-readable policy decision:
+
+```bash
+pip install .
+agent-policy --config examples/policy-config.json --tool-name bash --command "git push origin feature/example"
+```
+
+The command writes one JSON object to standard output and returns exit code `0` for an allowed action, `2` for a blocked action, and `3` for invalid CLI input or configuration. Set `audit_log` in the JSON configuration or pass `--audit-log` to append decision records in JSONL format.
+
+Use [examples/github-actions-policy-gate.yml](examples/github-actions-policy-gate.yml) as a GitHub Actions integration starting point. The supplied [examples/policy-config.json](examples/policy-config.json) documents the configuration fields.
+
 ## Repository principles
 
 The project is kept self-contained in this repository. It uses the Python standard library for the reference stack, keeps safety decisions explicit and testable, and treats documentation, demos, and verification code as one coherent project.
