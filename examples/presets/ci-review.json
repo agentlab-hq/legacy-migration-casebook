@@ -1,0 +1,10 @@
+{
+  "project_root": ".",
+  "policy": {
+    "trusted_git_orgs": [
+      "my-org"
+    ],
+    "current_working_branch": "feature/agent-task"
+  },
+  "audit_log": "agent-policy-ci.jsonl"
+}

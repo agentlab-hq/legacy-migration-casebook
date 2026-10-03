@@ -1,0 +1,8 @@
+{
+  "project_root": ".",
+  "user_custom_allows": [
+    "black .",
+    "pytest"
+  ],
+  "audit_log": ".agent-policy/local-development.jsonl"
+}
