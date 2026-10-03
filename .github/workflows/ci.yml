@@ -34,6 +34,9 @@ jobs:
       - name: Run ROI audit CLI
         run: python -m commercial_engine.roi_calculator
 
+      - name: Verify dashboard copies stay synchronized
+        run: cmp -s index.html agent_lab/public/index.html
+
       - name: Verify no demo artifacts left in the working tree
         run: |
           if [ -e current_tasks ]; then
