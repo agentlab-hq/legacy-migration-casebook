@@ -1,0 +1,33 @@
+# Copy this job into a workflow after installing the package in your repository.
+name: Policy Gate Example
+
+on:
+  workflow_dispatch:
+
+jobs:
+  policy-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install policy package
+        run: pip install .
+
+      - name: Gate the proposed action
+        run: >-
+          agent-policy
+          --config examples/policy-config.json
+          --tool-name bash
+          --command "git push origin feature/example"
+          --user-prompt "Publish the reviewed feature branch"
+          --audit-log policy-audit.jsonl
+
+      - name: Upload policy decision
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-audit
+          path: policy-audit.jsonl
