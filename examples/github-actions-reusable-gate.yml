@@ -1,0 +1,28 @@
+name: Policy Gate Example
+
+on:
+  workflow_dispatch:
+
+jobs:
+  policy-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gate a proposed agent command
+        id: policy
+        uses: ./.github/actions/agent-policy
+        with:
+          config: examples/presets/ci-review.json
+          tool-name: bash
+          command: git push origin feature/example
+          user-prompt: Publish a reviewed feature branch
+
+      - name: Upload policy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-policy-report
+          path: |
+            agent-policy-audit.jsonl
+            agent-policy-report.md
