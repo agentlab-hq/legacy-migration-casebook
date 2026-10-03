@@ -1,0 +1,20 @@
+{
+  "project_root": ".",
+  "user_custom_allows": [
+    "black ."
+  ],
+  "policy": {
+    "trusted_git_orgs": [
+      "my-org"
+    ],
+    "trusted_domains": [
+      "internal.corp.net",
+      "api.github.com"
+    ],
+    "trusted_cloud_buckets": [
+      "my-project-dev-bucket"
+    ],
+    "current_working_branch": "feature/agent-task"
+  },
+  "audit_log": ".agent-policy/audit.jsonl"
+}
