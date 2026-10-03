@@ -14,7 +14,7 @@ This repository contains a project-owned reference implementation for building s
 - **Durable execution:** `anthropic_agent_stack/session_and_harness.py` models a stateless coordinator, disposable execution environments, an external credential vault, and replayable session events.
 - **Commercial calculators:** `commercial_engine/` contains migration-oracle and return-on-investment prototypes.
 - **Documentation:** `docs/` contains the engineering playbook and business roadmap.
-- **Tests:** `tests/test_agent_stack.py` (integrated stack) and `tests/test_claude_auto_mode.py` (standalone policy layer) — 55 unit tests exercising safety tiers, workflow, cost, locking, and failover behaviors.
+- **Tests:** `tests/test_agent_stack.py` (integrated stack) and `tests/test_claude_auto_mode.py` (standalone policy layer) — unit tests exercising safety tiers, workflow, cost, locking, and failover behaviors.
 
 ## Quick start
 
@@ -52,7 +52,23 @@ agent-policy --config examples/policy-config.json --tool-name bash --command "gi
 
 The command writes one JSON object to standard output and returns exit code `0` for an allowed action, `2` for a blocked action, and `3` for invalid CLI input or configuration. Set `audit_log` in the JSON configuration or pass `--audit-log` to append decision records in JSONL format.
 
-Use [examples/github-actions-policy-gate.yml](examples/github-actions-policy-gate.yml) as a GitHub Actions integration starting point. The supplied [examples/policy-config.json](examples/policy-config.json) documents the configuration fields.
+Use [examples/github-actions-reusable-gate.yml](examples/github-actions-reusable-gate.yml) to run the reusable local GitHub Action. It writes a JSONL audit log and a Markdown report, which can be uploaded as a workflow artifact.
+
+## Start with a preset
+
+Three copy-ready configurations cover the common adoption paths:
+
+- [Safe local development](examples/presets/safe-local-development.json) for agents working only in a checked-out project.
+- [CI review](examples/presets/ci-review.json) for pull-request automation and an auditable gate.
+- [Production restricted](examples/presets/production-restricted.json) as a conservative baseline for environments that must not accept unreviewed production actions.
+
+Create a report from any audit log with:
+
+```bash
+agent-policy-report --audit-log agent-policy-audit.jsonl --output agent-policy-report.md
+```
+
+The supplied [examples/policy-config.json](examples/policy-config.json) documents the configuration fields.
 
 ## Repository principles
 
