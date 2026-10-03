@@ -70,7 +70,7 @@ class PolicyConfig:
             BlockRule("DE-05", BlockRuleCategory.DESTROY_OR_EXFILTRATE, "External HTTP POST of Data",
                       "Prevent sending internal data or env vars to external endpoints",
                       # Lookaheads make the match independent of flag order.
-                      r"curl\s+(?=.*?(?:-X\s*POST|--request\s+POST))(?=.*?(?:-d\b|--data(?:\s|=)))[^\n]*https?://(?!localhost|127\.0\.0\.1)"),
+                      r"curl\s+(?=.*?(?:-X\s*POST|--request(?:\s+|=)POST))(?=.*?(?:-d\b|--data(?:\b|\s|=)|--data-binary(?:\s|=)|--form(?:\s|=)|--json(?:\s|=)))[^\n]*https?://(?!localhost(?:[/:]|$)|127\.0\.0\.1(?:[/:]|$))"),
             BlockRule("DE-06", BlockRuleCategory.DESTROY_OR_EXFILTRATE, "Recursive Root/System Deletion",
                       "Prevent destructive rm -rf outside project directory",
                       r"rm\s+-(?:r[fF]|[fF]r)\s+(?:/|\~|/etc|/var|/usr|/home)"),
@@ -159,15 +159,20 @@ class PolicyEngine:
         """Checks command against rules. Returns (matched_blocks, matched_exception)."""
         clean_cmd = command.strip()
 
-        # 1. Check Allow Exceptions first (mandatory carve-outs)
-        for exc in self.config.allow_exceptions:
-            if exc.enabled and re.search(exc.pattern, clean_cmd, re.IGNORECASE):
-                return [], exc
-
-        # 2. Check Block Rules
+        # 1. Block rules always take precedence. An approved command prefix
+        # must never hide a dangerous action appended with shell composition.
         matched_blocks = []
         for rule in self.config.block_rules:
             if rule.enabled and re.search(rule.pattern, clean_cmd, re.IGNORECASE):
                 matched_blocks.append(rule)
+        if matched_blocks:
+            return matched_blocks, None
 
-        return matched_blocks, None
+        # 2. Exceptions are annotations for commands that are otherwise clean.
+        # fullmatch prevents a prefix such as "pytest" from approving a
+        # composed command (for example, "pytest && <another action>").
+        for exc in self.config.allow_exceptions:
+            if exc.enabled and re.fullmatch(exc.pattern, clean_cmd, re.IGNORECASE):
+                return [], exc
+
+        return [], None
