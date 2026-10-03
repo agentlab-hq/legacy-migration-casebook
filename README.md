@@ -1,63 +1,63 @@
-# Legacy Migration Casebook
+# Agent Policy Gate
 
-## Agent Engineering Master Lab
+> Open-source safety controls for AI coding agents.
 
-This repository contains a project-owned reference implementation for building safer, more reliable, and more economical software agents. It combines deterministic workflow patterns, code-mode tool projections, parallel-agent coordination, automatic safety gates, durable sessions, and an interactive browser lab.
+Define what an agent may do, block unsafe actions before they run, and keep an auditable record for every decision. Agent Policy Gate is a lightweight Python policy layer and reusable GitHub Action for teams adopting coding agents.
 
-## What is included
+## Why it exists
 
-- **Interactive lab:** `index.html` provides a browser-based dashboard for workflow, tool-economics, parallel-team, safety, and failover demonstrations. `agent_lab/public/index.html` is a byte-identical synced copy of the same file — keep the two in lockstep when editing either.
-- **Workflow engine:** `anthropic_agent_stack/workflows.py` implements prompt chaining, routing, parallelization, orchestrator-workers, and evaluator-optimizer patterns.
-- **Code-mode engine:** `anthropic_agent_stack/mcp_code_mode.py` demonstrates progressive tool disclosure, in-sandbox filtering, reusable tool registration, and deterministic PII tokenization.
-- **Parallel team harness:** `anthropic_agent_stack/parallel_team_harness.py` provides task locking, context-pollution filtering, time-blindness sampling, and differential oracle simulation.
-- **Safety controls:** `claude_auto_mode/` is the canonical policy layer — injection probe, `Tier1Allowlist`, `Tier2ProjectBoundary`, `PolicyEngine`, and the `AutoModePipeline` that wires them together with deny-and-continue budgets. `anthropic_agent_stack/auto_mode_guard.py` is a thin integrated adapter over that pipeline, so the three-tier contract (probe → Tier 1 → Tier 2 → Tier 3, with file edits that fail the Tier 2 boundary blocked there instead of falling through) has exactly one implementation.
-- **Durable execution:** `anthropic_agent_stack/session_and_harness.py` models a stateless coordinator, disposable execution environments, an external credential vault, and replayable session events.
-- **Commercial calculators:** `commercial_engine/` contains migration-oracle and return-on-investment prototypes.
-- **Documentation:** `docs/` contains the engineering playbook and business roadmap.
-- **Tests:** `tests/test_agent_stack.py` (integrated stack) and `tests/test_claude_auto_mode.py` (standalone policy layer) — unit tests exercising safety tiers, workflow, cost, locking, and failover behaviors.
+Coding agents can read, edit, test, and ship software quickly. They should not silently force-push history, alter secrets, deploy production changes, or send data outside approved boundaries. This project gives teams a clear, testable control point between an agent's proposed action and execution.
 
-## Quick start
-
-Run the integrated demonstration:
+## Start in 60 seconds
 
 ```bash
-python3 -m anthropic_agent_stack.run_integrated_system
-```
-
-The demo asserts every stage, uses a temporary lock directory (no repo
-artifacts), and exits non-zero if any stage misbehaves.
-
-Run the test suite:
-
-```bash
-python3 -m unittest discover -s tests -p "test_*.py" -v
-```
-
-Open the dashboard locally:
-
-```bash
-python3 -m http.server 8000
-```
-
-Then visit <http://localhost:8000/>.
-
-## Use the policy CLI
-
-Install the project, then evaluate a proposed action as a machine-readable policy decision:
-
-```bash
+git clone https://github.com/agentlab-hq/legacy-migration-casebook.git
+cd legacy-migration-casebook
 pip install .
-agent-policy --config examples/policy-config.json --tool-name bash --command "git push origin feature/example"
+agent-policy --config examples/presets/ci-review.json --tool-name bash --command "git push origin main"
 ```
 
-The command writes one JSON object to standard output and returns exit code `0` for an allowed action, `2` for a blocked action, and `3` for invalid CLI input or configuration. Set `audit_log` in the JSON configuration or pass `--audit-log` to append decision records in JSONL format.
+The command prints a JSON decision and exits with `0` for an allowed action, `2` for a blocked action, or `3` for invalid input/configuration.
 
-Use [examples/github-actions-policy-gate.yml](examples/github-actions-policy-gate.yml) as a GitHub Actions integration starting point. The supplied [examples/policy-config.json](examples/policy-config.json) documents the configuration fields.
+## What you get
 
-## Repository principles
+- **Policy CLI:** evaluate commands and project file edits with `agent-policy`.
+- **Safe defaults:** project boundaries, sensitive-file protections, prompt-injection scanning, and dangerous-command rules.
+- **Audit trail:** append decisions to JSONL logs, then render a Markdown report with `agent-policy-report`.
+- **Adoption presets:** [safe local development](examples/presets/safe-local-development.json), [CI review](examples/presets/ci-review.json), and [production restricted](examples/presets/production-restricted.json).
+- **GitHub Actions integration:** use the reusable action in [`.github/actions/agent-policy`](.github/actions/agent-policy/action.yml).
+- **Reference lab:** workflow, tool-economics, durable-session, and safety-pattern demonstrations.
 
-The project is kept self-contained in this repository. It uses the Python standard library for the reference stack, keeps safety decisions explicit and testable, and treats documentation, demos, and verification code as one coherent project.
+## GitHub Actions
+
+```yaml
+- uses: ./.github/actions/agent-policy
+  with:
+    config: examples/presets/ci-review.json
+    tool-name: bash
+    command: git push origin feature/example
+```
+
+The action creates a JSONL audit log and a Markdown report that your workflow can upload as an artifact.
+
+## Configuration
+
+Start from a preset and tailor trusted organizations, domains, project boundaries, and narrowly scoped custom allows. Never add credentials or production secrets to policy files.
+
+## Development
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+python -m anthropic_agent_stack.run_integrated_system
+```
+
+## Community
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+- Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- See the public [roadmap](docs/ROADMAP.md).
 
 ## License
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
