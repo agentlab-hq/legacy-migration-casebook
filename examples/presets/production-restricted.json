@@ -1,0 +1,17 @@
+{
+  "project_root": ".",
+  "user_custom_allows": [],
+  "policy": {
+    "trusted_git_orgs": [
+      "my-org"
+    ],
+    "trusted_domains": [
+      "internal.corp.net",
+      "api.github.com"
+    ],
+    "trusted_cloud_buckets": [
+      "my-project-dev-bucket"
+    ]
+  },
+  "audit_log": "agent-policy-production.jsonl"
+}
