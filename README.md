@@ -14,7 +14,7 @@ This repository contains a project-owned reference implementation for building s
 - **Durable execution:** `anthropic_agent_stack/session_and_harness.py` models a stateless coordinator, disposable execution environments, an external credential vault, and replayable session events.
 - **Commercial calculators:** `commercial_engine/` contains migration-oracle and return-on-investment prototypes.
 - **Documentation:** `docs/` contains the engineering playbook and business roadmap.
-- **Tests:** `tests/test_agent_stack.py` (integrated stack) and `tests/test_claude_auto_mode.py` (standalone policy layer) — 55 unit tests exercising safety tiers, workflow, cost, locking, and failover behaviors.
+- **Tests:** `tests/test_agent_stack.py` (integrated stack) and `tests/test_claude_auto_mode.py` (standalone policy layer) — unit tests exercising safety tiers, workflow, cost, locking, and failover behaviors.
 
 ## Quick start
 
