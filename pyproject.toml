@@ -16,6 +16,7 @@ dependencies = []
 
 [project.scripts]
 agent-policy = "claude_auto_mode.cli:main"
+agent-policy-report = "claude_auto_mode.report_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["anthropic_agent_stack*", "claude_auto_mode*", "commercial_engine*"]
