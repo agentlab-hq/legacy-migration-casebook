@@ -76,9 +76,11 @@ class Tier1Allowlist:
         if name in self.SAFE_READ_TOOLS:
             return True, f"Cleared Tier 1: Built-in safe read-only tool '{name}' cannot modify persistent state."
 
-        # Check narrow custom allowlist rules (e.g., formatters, linters)
+        # A custom command must match exactly. Substring matching would allow
+        # an approved formatter prefix to hide an appended shell action.
+        command = (tool_call.executable_command or "").strip()
         for rule in self.custom_allows:
-            if rule.lower() in name or (tool_call.executable_command and rule.lower() in tool_call.executable_command.lower()):
-                return True, f"Cleared Tier 1: Matched safe user-configured allow rule '{rule}'."
+            if command and rule.strip().casefold() == command.casefold():
+                return True, f"Cleared Tier 1: Matched exact safe user-configured command '{rule}'."
 
         return False, None
