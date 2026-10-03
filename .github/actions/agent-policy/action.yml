@@ -1,0 +1,55 @@
+name: Agent Policy Gate
+description: Evaluate a proposed agent action and generate a policy audit report.
+inputs:
+  config:
+    description: Policy JSON configuration path.
+    required: false
+    default: examples/presets/ci-review.json
+  tool-name:
+    description: Tool name to evaluate.
+    required: true
+  command:
+    description: Shell command to evaluate.
+    required: false
+    default: ""
+  audit-log:
+    description: JSONL audit output path.
+    required: false
+    default: agent-policy-audit.jsonl
+  report:
+    description: Markdown report output path.
+    required: false
+    default: agent-policy-report.md
+outputs:
+  verdict:
+    description: ALLOW or BLOCK.
+    value: ${{ steps.evaluate.outputs.verdict }}
+runs:
+  using: composite
+  steps:
+    - name: Install policy package
+      shell: bash
+      run: pip install .
+    - name: Evaluate action
+      id: evaluate
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        TOOL_NAME: ${{ inputs.tool-name }}
+        COMMAND: ${{ inputs.command }}
+        AUDIT_LOG: ${{ inputs.audit-log }}
+        REPORT: ${{ inputs.report }}
+      run: |
+        args=(--config "$CONFIG" --tool-name "$TOOL_NAME" --audit-log "$AUDIT_LOG")
+        if [ -n "$COMMAND" ]; then args+=(--command "$COMMAND"); fi
+        set +e
+        agent-policy "${args[@]}"
+        status=$?
+        set -e
+        agent-policy-report --audit-log "$AUDIT_LOG" --output "$REPORT"
+        if [ "$status" -eq 0 ]; then
+          echo "verdict=ALLOW" >> "$GITHUB_OUTPUT"
+        else
+          echo "verdict=BLOCK" >> "$GITHUB_OUTPUT"
+        fi
+        exit "$status"

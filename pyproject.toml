@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "legacy-migration-casebook"
 version = "0.1.0"
-description = "Reference implementations for safer AI-assisted legacy code migrations"
+description = "Open-source safety controls and audit trails for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
@@ -16,6 +16,7 @@ dependencies = []
 
 [project.scripts]
 agent-policy = "claude_auto_mode.cli:main"
+agent-policy-report = "claude_auto_mode.report_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["anthropic_agent_stack*", "claude_auto_mode*", "commercial_engine*"]

@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible problem with the policy engine, CLI, or GitHub Action.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove credentials, personal data, and private repository details."
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "v0.1.0 or a commit SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: "Commands, configuration, and expected versus actual behavior."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Safety impact
+      description: "Could this allow an unsafe action or block a safe one?"
