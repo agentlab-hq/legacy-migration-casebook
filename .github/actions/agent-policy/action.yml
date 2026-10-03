@@ -1,0 +1,72 @@
+name: Agent Policy Gate
+description: Evaluate a proposed agent action and publish a Markdown audit report.
+inputs:
+  config:
+    description: Path to the policy JSON configuration.
+    required: false
+    default: examples/policy-config.json
+  tool-name:
+    description: Tool name, such as bash or write_file.
+    required: true
+  command:
+    description: Executable command for shell-like tools.
+    required: false
+    default: ""
+  path:
+    description: Target path for file-edit tools.
+    required: false
+    default: ""
+  user-prompt:
+    description: Authorization context for the proposed action.
+    required: false
+    default: ""
+  audit-log:
+    description: JSONL file receiving the policy decision.
+    required: false
+    default: agent-policy-audit.jsonl
+  report:
+    description: Markdown report generated from the audit log.
+    required: false
+    default: agent-policy-report.md
+outputs:
+  verdict:
+    description: ALLOW or BLOCK.
+    value: ${{ steps.evaluate.outputs.verdict }}
+  exit-code:
+    description: Exit code returned by agent-policy.
+    value: ${{ steps.evaluate.outputs.exit-code }}
+runs:
+  using: composite
+  steps:
+    - name: Install policy package
+      shell: bash
+      run: pip install "$GITHUB_ACTION_PATH/../../.."
+
+    - name: Evaluate action
+      id: evaluate
+      shell: bash
+      env:
+        POLICY_CONFIG: ${{ inputs.config }}
+        POLICY_TOOL_NAME: ${{ inputs.tool-name }}
+        POLICY_COMMAND: ${{ inputs.command }}
+        POLICY_PATH: ${{ inputs.path }}
+        POLICY_USER_PROMPT: ${{ inputs.user-prompt }}
+        POLICY_AUDIT_LOG: ${{ inputs.audit-log }}
+        POLICY_REPORT: ${{ inputs.report }}
+      run: |
+        args=(--config "$POLICY_CONFIG" --tool-name "$POLICY_TOOL_NAME" --audit-log "$POLICY_AUDIT_LOG")
+        if [ -n "$POLICY_COMMAND" ]; then args+=(--command "$POLICY_COMMAND"); fi
+        if [ -n "$POLICY_PATH" ]; then args+=(--path "$POLICY_PATH"); fi
+        if [ -n "$POLICY_USER_PROMPT" ]; then args+=(--user-prompt "$POLICY_USER_PROMPT"); fi
+        set +e
+        agent-policy "${args[@]}"
+        status=$?
+        set -e
+        agent-policy-report --audit-log "$POLICY_AUDIT_LOG" --output "$POLICY_REPORT"
+        if [ "$status" -eq 0 ]; then
+          echo "verdict=ALLOW" >> "$GITHUB_OUTPUT"
+        else
+          echo "verdict=BLOCK" >> "$GITHUB_OUTPUT"
+        fi
+        echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+        exit "$status"
